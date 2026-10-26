@@ -1,0 +1,34 @@
+{
+  "comfy": {
+    "url": "https://github.com/Comfy-Org/ComfyUI.git",
+    "ref": "0b05cd8a3683cbf0c291b1472bb8b64da41de9ae"
+  },
+  "gguf": {
+    "url": "https://github.com/city96/ComfyUI-GGUF.git",
+    "ref": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a"
+  },
+  "trellis": {
+    "url": "https://github.com/Aero-Ex/ComfyUI-Trellis2-GGUF.git",
+    "ref": "b3b9e951874c5fb5c936566c93b908299be08b2c"
+  },
+  "flex": {
+    "url": "https://github.com/JeffreyXiang/FlexGEMM.git",
+    "ref": "6dd94a859c26ee8246888502eada3dd8ad85532e"
+  },
+  "cumesh": {
+    "url": "https://github.com/visualbruno/CuMesh.git",
+    "ref": "d10e54c30ddd03d11472c1431693f985501c7966"
+  },
+  "voxel": {
+    "url": "https://github.com/visualbruno/TRELLIS.2.git",
+    "ref": "65d1e13b4a92296036044df0633242bb9e95abf6"
+  },
+  "diffrast": {
+    "url": "https://github.com/NVlabs/nvdiffrast.git",
+    "ref": "253ac4fcea7de5f396371124af597e6cc957bfae"
+  },
+  "utils3d": {
+    "url": "https://github.com/EasternJournalist/utils3d.git",
+    "ref": "eeafc2786ec603b2e4f491538c8f2583637905f5"
+  }
+}
