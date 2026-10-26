@@ -31,6 +31,17 @@ def collect(samples=10):
     report['gpu']=command(['nvidia-smi'])
     report['nvcc']=command(['/usr/local/cuda-12.6/bin/nvcc','--version'])
     report['memory']=text('/proc/meminfo',4000)
+    report['cpu']={'logical_count':os.cpu_count(),'quota':text('/sys/fs/cgroup/cpu.max'),
+                   'cpuset':text('/sys/fs/cgroup/cpuset.cpus.effective')}
+    cpuinfo=text('/proc/cpuinfo',100000) or ''
+    report['cpu']['model']=next((line.split(':',1)[1].strip() for line in cpuinfo.splitlines()
+                               if line.startswith('model name')),None)
+    process_pid=None
+    try:
+        state=json.loads((ROOT/'trellis-t4-processes.json').read_text())
+        process_pid=int(state['comfy']['pid'])
+        report['comfy_pid']=process_pid
+    except (OSError,ValueError,KeyError):pass
     report['cgroup']={name:text('/sys/fs/cgroup/'+name) for name in ['memory.events','memory.current','memory.max']}
     report['packages']={}
     for name in ['torch','torchvision','torchaudio','triton','flex_gemm','cumesh','o_voxel','nvdiffrast','gguf','rembg','onnxruntime','onnxruntime-gpu','comfyui-frontend-package']:
@@ -68,6 +79,9 @@ def collect(samples=10):
     for index in range(samples):
         row={'index':index,'gpu':command(['nvidia-smi','--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,pstate','--format=csv,noheader,nounits']),
              'gpu_processes':command(['nvidia-smi','--query-compute-apps=pid,used_gpu_memory','--format=csv,noheader,nounits'])}
+        if process_pid:
+            status=text(f'/proc/{process_pid}/status',10000) or ''
+            row['comfy_process']=[line for line in status.splitlines() if line.startswith(('State:','VmRSS:','VmPeak:','Threads:'))]
         report['samples'].append(row)
         print(f'GPU sample {index+1}/{samples}: '+row['gpu'].get('output',str(row['gpu'])).strip(),flush=True)
         if index>=1 and all('error' in r['gpu'] for r in report['samples'][-2:]):

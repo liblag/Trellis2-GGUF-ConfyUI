@@ -64,14 +64,14 @@ def sparse_conv3d_forward(self, x: SparseTensor) -> SparseTensor:
     if algorithm=='explicit_gemm' and inference:
         from flex_gemm.ops.spconv import SubMConv3dFunction
         if neighbor_cache is None:
-            with stage('CUDA neighbor map'):
+            with stage(f'CUDA neighbor map: {x.feats.shape[0]} voxels'):
                 compute=SubMConv3dFunction._compute_neighbor_cache
                 extra={'needs_grad':False} if 'needs_grad' in inspect.signature(compute).parameters else {}
                 neighbor_cache=compute(x.coords.contiguous(),torch.Size([*x.shape,*x.spatial_shape]),
                                        (Kw,Kh,Kd),self.dilation,**extra)
             x.register_spatial_cache(neighbor_cache_key,neighbor_cache)
         from comfy.model_management import throw_exception_if_processing_interrupted
-        with stage('CUDA explicit sparse GEMM'):
+        with stage(f'CUDA explicit sparse GEMM: N={x.feats.shape[0]}, Ci={Ci}, Co={Co}'):
             out=explicit_gemm(x.feats,neighbor_cache['neighbor_map'],self.weight,self.bias,
                 budget_mb=config.FLEX_GEMM_WORKSPACE_MB,checkpoint=throw_exception_if_processing_interrupted,
                 progress=step_progress)
