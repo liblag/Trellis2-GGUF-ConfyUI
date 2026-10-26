@@ -46,7 +46,8 @@ def spawn(args,log,cwd,env):
     return proc,{'pid':proc.pid,'identity':identity(proc.pid)}
 
 def start():
-    if not (ROOT/'t4-verified.json').exists():raise RuntimeError('Run CUDA verification before launching.')
+    if not (ROOT/'t4-installed.json').exists() and not (ROOT/'t4-verified.json').exists():
+        raise RuntimeError('Complete installation before launching. CUDA smoke tests are optional.')
     stop()
     with socket.socket() as sock:
         if sock.connect_ex(('127.0.0.1',8188))==0:raise RuntimeError('Port 8188 is occupied by a different server; stop its original launch cell first.')
@@ -59,10 +60,23 @@ def start():
              SPARSE_CONV_BACKEND='flex_gemm',SPARSE_ATTN_BACKEND='sdpa',ATTN_BACKEND='sdpa',
              OMP_NUM_THREADS='2',OPENBLAS_NUM_THREADS='2',MKL_NUM_THREADS='2')
     env['PATH']=env['CUDA_HOME']+'/bin:'+env.get('PATH','')
-    comfy,record=spawn([str(PY),'-u','main.py','--listen','127.0.0.1','--port','8188',
-                        '--disable-pinned-memory'],LOG,COMFY,env)
-    state={'comfy':record};STATE.write_text(json.dumps(state))
+    state={}
     try:
+        # Obtain the public URL first; wildcard CORS is the user's requested launch mode.
+        tunnel,record=spawn([str(binary),'tunnel','--protocol','http2','--url','http://127.0.0.1:8188'],TLOG,ROOT,env)
+        state['tunnel']=record;STATE.write_text(json.dumps(state))
+        public_url=None
+        for _ in range(60):
+            if tunnel.poll() is not None:raise RuntimeError(TLOG.read_text(errors='replace')[-4000:])
+            match=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',TLOG.read_text(errors='replace'))
+            if match:
+                public_url=match.group(0)
+                break
+            time.sleep(1)
+        if public_url is None:raise TimeoutError('No tunnel URL; see cloudflare-t4.log')
+        comfy,record=spawn([str(PY),'-u','main.py','--listen','127.0.0.1','--port','8188',
+                            '--disable-pinned-memory','--enable-cors-header','*'],LOG,COMFY,env)
+        state['comfy']=record;STATE.write_text(json.dumps(state))
         for _ in range(150):
             if comfy.poll() is not None:raise RuntimeError('ComfyUI exited: '+LOG.read_text(errors='replace')[-8000:])
             try:
@@ -74,18 +88,12 @@ def start():
                 break
             except (TimeoutError,OSError):time.sleep(1)
         else:raise TimeoutError('ComfyUI did not become ready in time; see log.')
-        tunnel,record=spawn([str(binary),'tunnel','--protocol','http2','--url','http://127.0.0.1:8188'],TLOG,ROOT,env)
-        state['tunnel']=record;STATE.write_text(json.dumps(state))
-        for _ in range(60):
-            if tunnel.poll() is not None:raise RuntimeError(TLOG.read_text(errors='replace')[-4000:])
-            match=re.search(r'https://[a-z0-9-]+\.trycloudflare\.com',TLOG.read_text(errors='replace'))
-            if match:
-                print('\nComfyUI:',match.group(0),flush=True)
-                print('Ready. This cell finishes; ComfyUI stays running. Use the stop cell before setup changes.')
-                print('Templates: Workflows > Trellis2-T4. Start with Only_Mesh_Simple.')
-                return
-            time.sleep(1)
-        raise TimeoutError('No tunnel URL; see cloudflare-t4.log')
+        request=urllib.request.Request('http://127.0.0.1:8188/',headers={'Sec-Fetch-Site':'cross-site'})
+        with urllib.request.urlopen(request,timeout=5) as response:
+            if response.status!=200:raise RuntimeError('Browser navigation check failed')
+        print('\nComfyUI:',public_url,flush=True)
+        print('Ready. This cell finishes; ComfyUI stays running. Use the stop cell before setup changes.')
+        print('Templates: Workflows > Trellis2-T4. Start with Only_Mesh_Simple.')
     except BaseException:
         stop();raise
 

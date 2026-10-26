@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from wheel_cache import WheelCache, sha256
 
 ROOT = Path('/content')
 ASSETS = Path(__file__).resolve().parent
@@ -92,9 +93,7 @@ def system():
 
 def dependencies():
     # Only network checkouts run in parallel; package installs and builds stay ordered.
-    paths={'comfy':COMFY,'flex':ROOT/'t4-sources/flex','cumesh':ROOT/'t4-sources/cumesh',
-           'voxel':ROOT/'t4-sources/voxel','diffrast':ROOT/'t4-sources/diffrast',
-           'utils3d':ROOT/'t4-sources/utils3d'}
+    paths={'comfy':COMFY,'utils3d':ROOT/'t4-sources/utils3d'}
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda item:checkout(*item),paths.items()))
     checkout('trellis',NODE)
@@ -124,15 +123,23 @@ def builds():
     run(['ninja','--version'])
     print('Eigen include: /usr/include/eigen3; nvcc flags:',ENV['NVCC_PREPEND_FLAGS'],flush=True)
     wheelhouse=ROOT/'t4-wheelhouse';wheelhouse.mkdir(exist_ok=True)
+    persistent=WheelCache(os.environ.get('TRELLIS_WHEEL_CACHE'))
+    installed=json.loads(run([PY,'-c',"import importlib.metadata as m,json; result={};\nfor name in ['flex_gemm','cumesh','o_voxel','nvdiffrast']:\n try:\n  d=m.distribution(name); data=json.loads(d.read_text('direct_url.json') or '{}'); result[name]=data.get('archive_info',{}).get('hashes',{}).get('sha256')\n except m.PackageNotFoundError: pass\nprint(json.dumps(result))"],capture=True))
     for key,subdir,distribution in [('flex','', 'flex_gemm'),('cumesh','','cumesh'),
                                     ('voxel','o-voxel','o_voxel'),('diffrast','','nvdiffrast')]:
-        source=checkout(key,ROOT/'t4-sources'/key)/subdir
         marker=wheelhouse/(key+'-build.json')
         identity={'ref':LOCK[key]['ref'],'torch':'2.9.1+cu126','python':'3.12','arch':'7.5','cuda':'12.6'}
         info=json.loads(marker.read_text()) if marker.exists() else {}
         wheel=Path(info.get('wheel','/not-built'))
+        out=wheelhouse/key;out.mkdir(exist_ok=True)
         if info.get('identity')!=identity or not wheel.exists():
-            out=wheelhouse/key;out.mkdir(exist_ok=True)
+            restored=persistent.restore(key,identity,out)
+            if restored:
+                wheel=restored
+                info={'identity':identity,'wheel':str(wheel)}
+                marker.write_text(json.dumps(info,indent=2))
+        if info.get('identity')!=identity or not wheel.exists():
+            source=checkout(key,ROOT/'t4-sources'/key)/subdir
             print(f'BUILD START: {key} | source={source} | MAX_JOBS=1 | arch=7.5',flush=True)
             build_resources()
             try:
@@ -147,9 +154,14 @@ def builds():
             wheel=candidates[0]
             marker.write_text(json.dumps({'identity':identity,'wheel':str(wheel)},indent=2))
         # No prebuilt Torch291 wheel and no transitive Git CUDA rebuilds.
-        pip('install','--force-reinstall','--no-deps',wheel)
+        persistent.save(key,identity,wheel)
+        if installed.get(distribution)==sha256(wheel):
+            print('Already installed exact wheel, skipping reinstall:',distribution,flush=True)
+        else:
+            pip('install','--force-reinstall','--no-deps',wheel)
     # Optional PBR preview renderer only: do not install an unchecked architecture-specific wheel.
     print('CUDA packages built for sm_75. Optional nvdiffrec PBR preview is not installed.',flush=True)
+    (ROOT/'t4-installed.json').write_text(json.dumps({'sources':LOCK,'torch':'2.9.1+cu126','gpu_arch':'7.5'},indent=2))
 
 def verify():
     run([PY,ASSETS/'smoke_t4.py'])
