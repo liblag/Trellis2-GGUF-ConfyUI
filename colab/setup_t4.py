@@ -20,7 +20,9 @@ LOCK = json.loads((ASSETS/'sources.lock.json').read_text())
 ENV = dict(os.environ, CUDA_HOME='/usr/local/cuda-12.6', TORCH_CUDA_ARCH_LIST='7.5', MAX_JOBS='1',
            SPARSE_CONV_BACKEND='flex_gemm', SPARSE_ATTN_BACKEND='sdpa', ATTN_BACKEND='sdpa',
            OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
-ENV['PATH'] = ENV['CUDA_HOME']+'/bin:'+ENV.get('PATH','')
+ENV['PATH'] = str(PY.parent)+':'+ENV['CUDA_HOME']+'/bin:'+ENV.get('PATH','')
+ENV['CPLUS_INCLUDE_PATH'] = '/usr/include/eigen3'+(':'+ENV['CPLUS_INCLUDE_PATH'] if ENV.get('CPLUS_INCLUDE_PATH') else '')
+ENV['NVCC_PREPEND_FLAGS'] = '-I/usr/include/eigen3 '+ENV.get('NVCC_PREPEND_FLAGS','')
 ENV.update(PYTHONUNBUFFERED='1', PIP_PROGRESS_BAR='off', NINJA_STATUS='[%f/%t %es] ')
 
 def build_resources():
@@ -72,7 +74,7 @@ def system():
     run(['nvidia-smi'])
     run(['apt-get','update','-qq'])
     run(['apt-get','install','-y','software-properties-common','build-essential','git','pkg-config',
-         'libgl1','libegl1','libglib2.0-0','libxrender1','libxi6','libgomp1'])
+         'libgl1','libegl1','libglib2.0-0','libxrender1','libxi6','libgomp1','libeigen3-dev','ninja-build'])
     if not shutil.which('python3.12'):
         run(['add-apt-repository','-y','ppa:deadsnakes/ppa'])
         run(['apt-get','update','-qq'])
@@ -113,6 +115,14 @@ def dependencies():
 
 def builds():
     if not PY.exists():raise RuntimeError('Run system setup first')
+    # Also repair an existing environment without repeating system/dependency setup.
+    if not Path('/usr/include/eigen3/Eigen/Dense').exists() or shutil.which('ninja',path=ENV['PATH']) is None:
+        run(['apt-get','update','-qq'])
+        run(['apt-get','install','-y','libeigen3-dev','ninja-build'])
+    if not Path('/usr/include/eigen3/Eigen/Dense').exists():
+        raise RuntimeError('Eigen headers are still missing after installing libeigen3-dev')
+    run(['ninja','--version'])
+    print('Eigen include: /usr/include/eigen3; nvcc flags:',ENV['NVCC_PREPEND_FLAGS'],flush=True)
     wheelhouse=ROOT/'t4-wheelhouse';wheelhouse.mkdir(exist_ok=True)
     for key,subdir,distribution in [('flex','', 'flex_gemm'),('cumesh','','cumesh'),
                                     ('voxel','o-voxel','o_voxel'),('diffrast','','nvdiffrast')]:
