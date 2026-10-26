@@ -88,16 +88,16 @@
         "GGUF Q4_K_M",
         "sdpa",
         "cuda",
-        true,
-        false
+        false,
+        true
       ],
       "widgets_values_named": {
         "modelname": "TRELLIS.2-4B",
         "model_format": "GGUF Q4_K_M",
         "backend": "sdpa",
         "device": "cuda",
-        "low_vram": true,
-        "keep_models_loaded": false
+        "low_vram": false,
+        "keep_models_loaded": true
       }
     },
     {

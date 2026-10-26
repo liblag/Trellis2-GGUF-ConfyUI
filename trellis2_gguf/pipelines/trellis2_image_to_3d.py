@@ -923,6 +923,27 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             if self.rembg_model is not None:
                 self.rembg_model.to(device)
 
+    def prepare_gpu_resident_models(self, pipeline_type, generate_texture_slat):
+        """Preload all components used by this generation path, without CPU offload."""
+        if self.low_vram or not self.keep_models_loaded:
+            return
+        if not str(self.device).startswith('cuda'):
+            raise RuntimeError('GPU-resident generation requires device=cuda')
+        print(f'[Trellis] Preloading GPU-resident models: pipeline={pipeline_type}, texture={generate_texture_slat}',flush=True)
+        self.load_sparse_structure_model()
+        self.load_image_cond_model()
+        if pipeline_type in ('512','1024_cascade','1536_cascade'):
+            self.load_shape_slat_flow_model_512()
+        if pipeline_type in ('1024','1024_cascade','1536_cascade'):
+            self.load_shape_slat_flow_model_1024()
+        self.load_shape_slat_decoder()
+        if generate_texture_slat:
+            if pipeline_type=='512':self.load_tex_slat_flow_model_512()
+            else:self.load_tex_slat_flow_model_1024()
+            self.load_tex_slat_decoder()
+        from ...gpu_residency import assert_gpu_resident
+        assert_gpu_resident(self)
+
     def preprocess_image(self, input: Image.Image) -> Image.Image:
         """
         Preprocess the input image.
@@ -1638,6 +1659,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             images = [self.preprocess_image(im) for im in images]
             
         seed_all(seed)
+        self.prepare_gpu_resident_models(pipeline_type, generate_texture_slat)
         
         # Load sparse structure model early so we can check image_attn_mode
         self.load_sparse_structure_model()
@@ -1977,6 +1999,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             pipeline_type = self.default_pipeline_type
         
         seed_all(seed)
+        self.prepare_gpu_resident_models(pipeline_type, generate_texture_slat)
         
         # Collect views
         views_dict = {'front': front}
@@ -2759,6 +2782,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             images = [image]
             
         seed_all(seed)
+        self.prepare_gpu_resident_models(pipeline_type, generate_texture_slat)
         
         # Load sparse structure model early so we can check image_attn_mode
         self.load_sparse_structure_model()

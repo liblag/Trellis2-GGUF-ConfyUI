@@ -210,7 +210,14 @@ def wrapped_stage(function, label):
     @wraps(function)
     def logged(*args, **kwargs):
         with stage(label):
-            return function(*args, **kwargs)
+            if label.startswith(('sample_', 'decode_')) and args:
+                from .gpu_residency import assert_gpu_resident
+                assert_gpu_resident(args[0])
+            result = function(*args, **kwargs)
+            if label.startswith('load_') and args:
+                from .gpu_residency import assert_gpu_resident
+                assert_gpu_resident(args[0])
+            return result
     logged._trellis_stage_log = True
     return logged
 
@@ -253,7 +260,7 @@ def install_execution_logging(mapping):
     for cls in [Trellis2ImageTo3DPipeline, *[x for x in vars(trellis2_texturing).values()
                 if inspect.isclass(x) and x.__module__ == trellis2_texturing.__name__]]:
         for name, method in list(vars(cls).items()):
-            if inspect.isfunction(method) and name.startswith(('load_', 'unload_', 'sample_', 'decode_', 'get_cond', 'get_proj_cond')):
+            if inspect.isfunction(method) and name.startswith(('load_', 'unload_', 'sample_', 'decode_', 'prepare_gpu_', 'get_cond', 'get_proj_cond')):
                 setattr(cls, name, wrapped_stage(method, name))
     from .trellis2_gguf.pipelines.samplers import flow_euler
     if not getattr(flow_euler.tqdm, '_trellis_tracked', False):

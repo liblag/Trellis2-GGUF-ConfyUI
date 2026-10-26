@@ -374,7 +374,7 @@ class Trellis2_GGUFLoadModel:
                 ], {"default": "GGUF Q8_0"}),
                 "backend": (["flash_attn", "xformers", "sdpa", "flash_attn_3"], {"default": "xformers"}),
                 "device": (["cpu","cuda"],{"default":"cuda"}),
-                "low_vram": ("BOOLEAN",{"default":True}),
+                "low_vram": ("BOOLEAN",{"default":False}),
                 "keep_models_loaded": ("BOOLEAN", {"default":True}),
             },
         }
@@ -491,7 +491,7 @@ class Trellis2_SDNQLoadModel(Trellis2_GGUFLoadModel):
                 ], {"default": "sdnq_int8_svd64"}),
                 "backend": (["flash_attn", "xformers", "sdpa", "flash_attn_3"], {"default": "xformers"}),
                 "device": (["cpu","cuda"],{"default":"cuda"}),
-                "low_vram": ("BOOLEAN",{"default":True}),
+                "low_vram": ("BOOLEAN",{"default":False}),
                 "keep_models_loaded": ("BOOLEAN", {"default":True}),
                 "use_quantized_matmul": ("BOOLEAN", {"default":True, "tooltip":"Enable int8 quantized matmul (faster inference on supported GPUs)"}),
                 "torch_compile": ("BOOLEAN", {"default":True, "tooltip":"Apply torch.compile to SLat flow models (~27% faster, requires more VRAM on first run)"}),
