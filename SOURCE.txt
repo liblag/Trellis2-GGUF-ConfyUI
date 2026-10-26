@@ -1,0 +1,2 @@
+https://github.com/Aero-Ex/ComfyUI-Trellis2-GGUF
+commit b3b9e951874c5fb5c936566c93b908299be08b2c
