@@ -21,6 +21,19 @@ ENV = dict(os.environ, CUDA_HOME='/usr/local/cuda-12.6', TORCH_CUDA_ARCH_LIST='7
            SPARSE_CONV_BACKEND='flex_gemm', SPARSE_ATTN_BACKEND='sdpa', ATTN_BACKEND='sdpa',
            OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
 ENV['PATH'] = ENV['CUDA_HOME']+'/bin:'+ENV.get('PATH','')
+ENV.update(PYTHONUNBUFFERED='1', PIP_PROGRESS_BAR='off', NINJA_STATUS='[%f/%t %es] ')
+
+def build_resources():
+    data={'disk_free_gb':round(shutil.disk_usage(ROOT).free/1024**3,2)}
+    for filename in ('memory.events','memory.current','memory.max'):
+        path=Path('/sys/fs/cgroup')/filename
+        if path.exists():data[filename]=path.read_text().strip()
+    meminfo=Path('/proc/meminfo')
+    if meminfo.exists():
+        data['system_memory']='; '.join(line for line in meminfo.read_text().splitlines()
+                                      if line.startswith(('MemAvailable:','SwapFree:')))
+    print('BUILD RESOURCES:',json.dumps(data),flush=True)
+    return data
 
 def run(args, cwd=None, capture=False):
     print('+', ' '.join(map(str,args)), flush=True)
@@ -110,7 +123,15 @@ def builds():
         wheel=Path(info.get('wheel','/not-built'))
         if info.get('identity')!=identity or not wheel.exists():
             out=wheelhouse/key;out.mkdir(exist_ok=True)
-            pip('wheel',source,'--no-build-isolation','--no-deps','--wheel-dir',out)
+            print(f'BUILD START: {key} | source={source} | MAX_JOBS=1 | arch=7.5',flush=True)
+            build_resources()
+            try:
+                # Verbose PEP517 output is essential: quiet pip can report "No available output".
+                # Keep build directories so ninja can reuse successfully compiled objects.
+                pip('wheel','--verbose','--no-clean',source,'--no-build-isolation','--no-deps','--wheel-dir',out)
+            finally:
+                print(f'BUILD END/FAIL: {key}',flush=True)
+                build_resources()
             candidates=list(out.glob('*.whl'))
             if len(candidates)!=1:raise RuntimeError(f'Expected one wheel in {out}; found {len(candidates)}')
             wheel=candidates[0]
