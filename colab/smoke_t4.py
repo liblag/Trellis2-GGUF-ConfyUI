@@ -15,12 +15,25 @@ coords=torch.tensor([[0,x,y,z] for x in range(4) for y in range(4) for z in rang
 features=torch.randn(len(coords),32,device='cuda',dtype=torch.float16)
 weights=torch.randn(32,3,3,3,32,device='cuda',dtype=torch.float16)*0.01
 bias=torch.zeros(32,device='cuda',dtype=torch.float16)
-for algo in ['explicit_gemm','implicit_gemm_splitk']:
+for algo in ['explicit_gemm']:
     set_algorithm(algo)
     with torch.no_grad():out,_=sparse_submanifold_conv3d(features,coords,torch.Size([1,32,4,4,4]),weights,bias)
     torch.cuda.synchronize()
     assert out.shape==(64,32) and torch.isfinite(out).all()
     print('PASS flex_gemm:',algo,flush=True)
+import importlib.util
+from pathlib import Path
+source=Path('/content/ComfyUI/custom_nodes/ComfyUI-Trellis2-GGUF/trellis2_gguf/modules/sparse/conv/explicit_gemm.py')
+if source.exists():
+    from flex_gemm.ops.spconv import SubMConv3dFunction
+    spec=importlib.util.spec_from_file_location('t4_explicit_gemm',source)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    cache=SubMConv3dFunction._compute_neighbor_cache(coords,torch.Size([1,32,4,4,4]),(3,3,3),(1,1,1),False)
+    with torch.no_grad():chunked=module.explicit_gemm(features,cache['neighbor_map'],weights,bias,budget_mb=.01)
+    torch.cuda.synchronize()
+    torch.testing.assert_close(chunked,out,atol=.01,rtol=.01)
+    assert chunked.device.type=='cuda'
+    print('PASS bounded explicit sparse GEMM on CUDA, matches upstream explicit result',flush=True)
 vertices=torch.tensor([[0.,0.,0.],[1.,0.,0.],[0.,1.,0.]],device='cuda')
 faces=torch.tensor([[0,1,2]],device='cuda',dtype=torch.int32)
 mesh=cumesh.CuMesh();mesh.init(vertices,faces);v,f=mesh.read();torch.cuda.synchronize()

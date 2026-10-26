@@ -1,10 +1,21 @@
 import math
+import inspect
 import torch
 import torch.nn as nn
 from .. import SparseTensor
 from . import config
 import flex_gemm
 from flex_gemm.ops.spconv import sparse_submanifold_conv3d
+from .explicit_gemm import explicit_gemm
+from .....execution_logging import stage, step_progress
+
+_reported_algorithms=set()
+
+def selected_algorithm(features):
+    if config.FLEX_GEMM_ALGO!='auto':return config.FLEX_GEMM_ALGO
+    if features.device.type=='cuda' and torch.cuda.get_device_capability(features.device)[0]<8:
+        return 'explicit_gemm'
+    return 'implicit_gemm_splitk'
 
 
 def sparse_conv3d_init(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, padding=None, bias=True, indice_key=None):
@@ -35,14 +46,37 @@ def sparse_conv3d_init(self, in_channels, out_channels, kernel_size, stride=1, d
 
 
 def sparse_conv3d_forward(self, x: SparseTensor) -> SparseTensor:
-    flex_gemm.ops.spconv.set_algorithm(config.FLEX_GEMM_ALGO)
+    algorithm=selected_algorithm(x.feats)
+    flex_gemm.ops.spconv.set_algorithm(algorithm)
     flex_gemm.ops.spconv.set_hashmap_ratio(config.FLEX_GEMM_HASHMAP_RATIO)
+    report=(str(x.feats.device),algorithm)
+    if report not in _reported_algorithms:
+        print(f'[Trellis] Sparse convolution device={x.feats.device}, dtype={x.feats.dtype}, algorithm={algorithm}, workspace={config.FLEX_GEMM_WORKSPACE_MB}MB',flush=True)
+        _reported_algorithms.add(report)
 
     # check if neighbor map is already computed
     Co, Kd, Kh, Kw, Ci = self.weight.shape
     neighbor_cache_key = f'SubMConv3d_neighbor_cache_{Kw}x{Kh}x{Kd}_dilation{self.dilation}'
     neighbor_cache = x.get_spatial_cache(neighbor_cache_key)
     
+    inference=not torch.is_grad_enabled() or not (x.feats.requires_grad or self.weight.requires_grad or
+                                                (self.bias is not None and self.bias.requires_grad))
+    if algorithm=='explicit_gemm' and inference:
+        from flex_gemm.ops.spconv import SubMConv3dFunction
+        if neighbor_cache is None:
+            with stage('CUDA neighbor map'):
+                compute=SubMConv3dFunction._compute_neighbor_cache
+                extra={'needs_grad':False} if 'needs_grad' in inspect.signature(compute).parameters else {}
+                neighbor_cache=compute(x.coords.contiguous(),torch.Size([*x.shape,*x.spatial_shape]),
+                                       (Kw,Kh,Kd),self.dilation,**extra)
+            x.register_spatial_cache(neighbor_cache_key,neighbor_cache)
+        from comfy.model_management import throw_exception_if_processing_interrupted
+        with stage('CUDA explicit sparse GEMM'):
+            out=explicit_gemm(x.feats,neighbor_cache['neighbor_map'],self.weight,self.bias,
+                budget_mb=config.FLEX_GEMM_WORKSPACE_MB,checkpoint=throw_exception_if_processing_interrupted,
+                progress=step_progress)
+        return x.replace(out)
+
     out, neighbor_cache_ = sparse_submanifold_conv3d(
         x.feats,
         x.coords,

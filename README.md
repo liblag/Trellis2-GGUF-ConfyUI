@@ -12,6 +12,16 @@
 
 Текст идёт в консоль ComfyUI (`/content/comfy-t4.log` в новом notebook); структурированные события — в `ComfyUI/output/trellis_logs/*.jsonl`. При ошибке прикладывайте конец консольного лога и JSONL соответствующей ноды. Проверки без GPU: `python -m unittest discover -s tests -v`. Проверка живого интерфейса и полного T4 inference ещё требуется.
 
+## Совместимость sparse-декодера с T4
+
+`FLEX_GEMM_ALGO=auto`: на CUDA-устройствах с compute capability ниже 8.0 (в том числе T4 7.5) используется explicit GEMM с ограниченным промежуточным буфером. Это обходит Triton implicit_gemm_splitk и его autotune, где наблюдалась пауза в Decoder block 1/36. CUDA neighbor-map всё ещё использует скомпилированное расширение FlexGEMM; gather и матричное умножение выполняются PyTorch на том же устройстве, что и входные тензоры. Автоматического перевода вычислений на CPU нет.
+
+В отличие от обычного upstream explicit_gemm, большой im2col разбит по строкам. Ориентир рабочего буфера — 128 МБ (`TRELLIS_FLEX_WORKSPACE_MB`), с учётом gather/индексов; это не ограничение общей VRAM модели. Между частями проверяется отмена и выводится прогресс. Этот путь используется только при inference. Для более новых GPU auto сохраняет implicit_gemm_splitk; явный выбор доступен через `TRELLIS_FLEX_GEMM_ALGO`.
+
+Исправлена обработка `SPARSE_ATTN_BACKEND=sdpa`: ранее sparse-config игнорировал это значение и сохранял flash_attn с последующим fallback. `low_vram=true` и `keep_models_loaded=false` оставлены: они объясняют рост системной RAM и паузы между GPU-этапами, но не переключают сэмплинг на CPU. Без замеров на T4 эти параметры не заменяются на более рискованный режим удержания всех моделей.
+
+Новый explicit-путь проверен на CPU: FP32, FP16, padding uint32, bias/no-bias, несколько chunks, отмена и запрет training. Совпадение чисел не является измерением производительности и успешного экспорта на T4. Необязательный CUDA smoke test теперь проверяет explicit-путь, не запускает проблемный implicit autotune на T4. `colab/collect_diagnostics.py` собирает read-only отчёт без CUDA-кернелов и установки пакетов: версии, NVCC, настройки запущенных Trellis-нод, RAM, cgroup, samples nvidia-smi и конец лога; ключи известного формата редактируются, полный список env/remote URLs не собирается.
+
 Саму ноду notebook скачивает из **liblag/Trellis2-GGUF-ConfyUI**, а ComfyUI, ComfyUI-GGUF, CUDA-библиотеки и веса моделей — из их собственных источников. При переходе со старой Aero-Ex-ноды её папка целиком переносится в `/content/t4-node-backups/`, чтобы сохранить локальные изменения и исключить загрузку двух копий ноды.
 
 ## Полный notebook для Colab
