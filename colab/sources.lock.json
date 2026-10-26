@@ -9,7 +9,7 @@
   },
   "trellis": {
     "url": "https://github.com/liblag/Trellis2-GGUF-ConfyUI.git",
-    "ref": "ded63f930296bbd18a67294684c28428d1fbbf40"
+    "ref": "bee72a2bca87b6e9b1136dcf99b71318d456a913"
   },
   "flex": {
     "url": "https://github.com/JeffreyXiang/FlexGEMM.git",
