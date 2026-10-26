@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path('/content')
@@ -32,6 +33,15 @@ def pip(*args):
 def checkout(key, path):
     source=LOCK[key]
     path.parent.mkdir(parents=True,exist_ok=True)
+    if key=='trellis' and (path/'.git').exists():
+        origin=run(['git','remote','get-url','origin'],cwd=path,capture=True).strip().removesuffix('.git').lower()
+        wanted=source['url'].removesuffix('.git').lower()
+        if origin!=wanted:
+            # Keep the whole previous node, its Git metadata and local changes outside custom_nodes.
+            backup=ROOT/'t4-node-backups'/f'{path.name}-{time.time_ns()}'
+            backup.parent.mkdir(parents=True,exist_ok=True)
+            shutil.move(str(path),str(backup))
+            print('Previous Trellis node preserved at',backup,flush=True)
     if not (path/'.git').exists():
         if path.exists() and any(path.iterdir()):raise RuntimeError(f'{path} is not a Git checkout')
         run(['git','clone','--filter=blob:none',source['url'],path])

@@ -1,5 +1,9 @@
 # TRELLIS.2: стартовые профили Colab T4 16 GB
 
+Репозиторий содержит полный исходный код ноды: `nodes.py`, `__init__.py`, `model_manager.py`, пакет `trellis2_gguf/`, патчи и 14 workflow. Основа — Aero-Ex/ComfyUI-Trellis2-GGUF; авторство и MIT-лицензия сохранены, исходная ревизия записана в SOURCE.txt. Старые бинарные wheels не включены: notebook собирает CUDA-расширения для T4 из закреплённых исходников.
+
+Саму ноду notebook скачивает из **liblag/Trellis2-GGUF-ConfyUI**, а ComfyUI, ComfyUI-GGUF, CUDA-библиотеки и веса моделей — из их собственных источников. При переходе со старой Aero-Ex-ноды её папка целиком переносится в `/content/t4-node-backups/`, чтобы сохранить локальные изменения и исключить загрузку двух копий ноды.
+
 ## Полный notebook для Colab
 
 [Открыть Trellis2_T4_Colab.ipynb в Colab](https://colab.research.google.com/github/liblag/Trellis2-GGUF-ConfyUI/blob/main/Trellis2_T4_Colab.ipynb)

@@ -1,0 +1,15 @@
+gguf
+meshlib
+requests
+pymeshlab
+opencv-python
+scipy
+open3d
+plotly
+rembg
+trimesh
+rectpack
+numpy
+sdnq
+git+https://github.com/EasternJournalist/utils3d.git
+transformers==5.2.0

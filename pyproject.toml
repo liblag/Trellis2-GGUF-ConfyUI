@@ -1,0 +1,16 @@
+[project]
+name = "trellis2-gguf"
+description = "ComfyUI Wrapper for Microsoft Trellis.2 - Native and Compact Structured Latents for 3D Generation"
+version = "0.0.1"
+license = {file = "LICENSE"} 
+
+dependencies = ["meshlib", "requests", "pymeshlab", "opencv-python", "scipy", "open3d", "plotly", "trimesh", "rembg"]
+
+[project.urls]
+Repository = "https://github.com/liblag/Trellis2-GGUF-ConfyUI"
+[tool.comfy]
+PublisherId = "aeroex"
+DisplayName = "ComfyUI-Trellis2-GGUF"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
