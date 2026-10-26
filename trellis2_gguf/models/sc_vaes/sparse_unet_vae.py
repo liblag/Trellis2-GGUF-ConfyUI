@@ -1,3 +1,4 @@
+from ....execution_logging import stage, step_progress
 from typing import *
 import torch
 import torch.nn as nn
@@ -667,21 +668,26 @@ class SparseUnetVaeDecoder(nn.Module):
         h = h.type(self.dtype)
         subs_gt = []
         subs = []
+        total_blocks = sum(len(res) for res in self.blocks)
+        completed_blocks = 0
         for i, res in enumerate(self.blocks):
             for j, block in enumerate(res):
-                if i < len(self.blocks) - 1 and j == len(res) - 1:
-                    if self.pred_subdiv:
-                        if self.training:
-                            subs_gt.append(h.get_spatial_cache('subdivision'))
-                        h, sub = block(h)
-                        subs.append(sub)
+                with stage(f"Decoder block {completed_blocks + 1}/{total_blocks}"):
+                    if i < len(self.blocks) - 1 and j == len(res) - 1:
+                        if self.pred_subdiv:
+                            if self.training:
+                                subs_gt.append(h.get_spatial_cache('subdivision'))
+                            h, sub = block(h)
+                            subs.append(sub)
+                        else:
+                            h = block(h, subdiv=guide_subs[i] if guide_subs is not None else None)
                     else:
-                        h = block(h, subdiv=guide_subs[i] if guide_subs is not None else None)
-                else:
-                    h = block(h)
-                # More frequent cache clearing in low_vram mode to reclaim memory between blocks
-                if self.low_vram:
-                    torch.cuda.empty_cache()
+                        h = block(h)
+                    # More frequent cache clearing in low_vram mode to reclaim memory between blocks
+                    if self.low_vram:
+                        torch.cuda.empty_cache()
+                    completed_blocks += 1
+                    step_progress(completed_blocks, total_blocks)
             torch.cuda.empty_cache()                        
         if self.low_vram:
             def fused_finalize(t):

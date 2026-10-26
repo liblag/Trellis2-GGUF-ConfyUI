@@ -202,4 +202,8 @@ except Exception as e:
 
 from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
+from .execution_logging import install_execution_logging
+install_execution_logging(NODE_CLASS_MAPPINGS)
+WEB_DIRECTORY = "./web"
+
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
